@@ -1,15 +1,22 @@
 from flask import Flask, render_template, jsonify
 import requests
 import os
+from datetime import datetime
 
 app = Flask(__name__)
 
-# Configurar a pasta de templates
-app.config['TEMPLATES_AUTO_RELOAD'] = True
+# Configurações da API Ultimate Tennis
+RAPIDAPI_KEY = os.environ.get('RAPIDAPI_KEY', 'a6a64b91b0mshf6c3de3afc4302dp1142e8jsnf6a4eea01df4')
+RAPIDAPI_HOST = 'ultimate-tennis1.p.rapidapi.com'
+BASE_URL = 'https://ultimate-tennis1.p.rapidapi.com'
 
-# Configuração da API
-RAPIDAPI_KEY = 'a6a64b91b0mshf6c3de3afc4302dp1142e8jsnf6a4eea01df4'
-RAPIDAPI_HOST = 'tennis-api5.p.rapidapi.com'
+# Headers para as requisições
+HEADERS = {
+    'x-rapidapi-key': RAPIDAPI_KEY,
+    'x-rapidapi-host': RAPIDAPI_HOST
+}
+
+app.config['TEMPLATES_AUTO_RELOAD'] = True
 
 @app.route('/')
 def index():
@@ -21,27 +28,45 @@ def health():
 
 @app.route('/api/live-matches')
 def get_live_matches():
-    """Buscar partidas ao vivo da API RapidAPI"""
+    """Buscar partidas ao vivo da Ultimate Tennis API"""
     try:
-        url = "https://tennis-api5.p.rapidapi.com/get-match-events"
+        # Endpoint para buscar partidas ao vivo
+        url = f"{BASE_URL}/live_scores"
         
-        headers = {
-            "x-rapidapi-key": RAPIDAPI_KEY,
-            "x-rapidapi-host": RAPIDAPI_HOST
-        }
-        
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=HEADERS, timeout=10)
         response.raise_for_status()
         
         data = response.json()
         
-        # Filtrar apenas partidas ao vivo
-        live_matches = [match for match in data if match.get('status') in ['LIVE', 'IN_PROGRESS']]
+        # Verifica se há erro interno (nenhuma partida ao vivo)
+        if 'internal_error' in data:
+            return jsonify({
+                'success': True,
+                'matches': [],
+                'count': 0,
+                'message': data.get('internal_error', 'Nenhuma partida ao vivo no momento')
+            })
+        
+        # Processa as partidas
+        processed_matches = []
+        
+        # A resposta pode ser um dicionário com matches ou uma lista
+        if isinstance(data, dict):
+            matches = data.get('matches', []) or data.get('data', [])
+        elif isinstance(data, list):
+            matches = data
+        else:
+            matches = []
+        
+        for match in matches[:20]:  # Limita a 20 partidas
+            processed_match = process_match(match)
+            if processed_match:
+                processed_matches.append(processed_match)
         
         return jsonify({
             'success': True,
-            'matches': live_matches,
-            'count': len(live_matches)
+            'matches': processed_matches,
+            'count': len(processed_matches)
         })
     
     except requests.exceptions.RequestException as e:
@@ -57,65 +82,76 @@ def get_live_matches():
             'error': f'Erro ao processar dados: {str(e)}'
         }), 500
 
-@app.route('/api/player-history/<player_name>')
-def get_player_history(player_name):
-    """Buscar histórico de partidas de um jogador"""
+@app.route('/api/player-history/<player_id>')
+def get_player_history(player_id):
+    """Buscar histórico das últimas 15 partidas de um jogador"""
     try:
-        url = "https://tennis-api5.p.rapidapi.com/get-player-matches"
-        
-        headers = {
-            "x-rapidapi-key": RAPIDAPI_KEY,
-            "x-rapidapi-host": RAPIDAPI_HOST
-        }
+        # Endpoint para buscar histórico do jogador
+        url = f"{BASE_URL}/player_matches"
         
         params = {
-            "name": player_name,
-            "limit": 15
+            'player_id': player_id,
+            'limit': 15
         }
         
-        response = requests.get(url, headers=headers, params=params, timeout=10)
+        response = requests.get(url, headers=HEADERS, params=params, timeout=10)
         response.raise_for_status()
         
         data = response.json()
         
+        # Processa o histórico
+        history = []
+        if isinstance(data, dict):
+            matches = data.get('matches', []) or data.get('data', [])
+        elif isinstance(data, list):
+            matches = data
+        else:
+            matches = []
+        
+        for match in matches[:15]:
+            history.append({
+                'date': match.get('date'),
+                'opponent': match.get('opponent', {}).get('name') if isinstance(match.get('opponent'), dict) else match.get('opponent'),
+                'result': match.get('result'),
+                'score': match.get('score'),
+                'surface': match.get('surface'),  # Tipo de piso
+                'tournament': match.get('tournament', {}).get('name') if isinstance(match.get('tournament'), dict) else match.get('tournament')
+            })
+        
         return jsonify({
             'success': True,
-            'player': player_name,
-            'history': data[:15] if isinstance(data, list) else []
+            'player_id': player_id,
+            'history': history
         })
     
     except requests.exceptions.RequestException as e:
-        print(f"Erro ao buscar histórico de {player_name}: {str(e)}")
+        print(f"Erro ao buscar histórico: {str(e)}")
         return jsonify({
             'success': False,
             'error': f'Erro ao buscar histórico: {str(e)}'
         }), 500
 
-@app.route('/api/h2h/<player1>/<player2>')
-def get_h2h(player1, player2):
+@app.route('/api/h2h/<player1_id>/<player2_id>')
+def get_h2h(player1_id, player2_id):
     """Buscar confronto direto entre dois jogadores"""
     try:
-        url = "https://tennis-api5.p.rapidapi.com/get-h2h"
-        
-        headers = {
-            "x-rapidapi-key": RAPIDAPI_KEY,
-            "x-rapidapi-host": RAPIDAPI_HOST
-        }
+        # Endpoint para buscar H2H
+        url = f"{BASE_URL}/h2h"
         
         params = {
-            "player1": player1,
-            "player2": player2
+            'player1_id': player1_id,
+            'player2_id': player2_id
         }
         
-        response = requests.get(url, headers=headers, params=params, timeout=10)
+        response = requests.get(url, headers=HEADERS, params=params, timeout=10)
         response.raise_for_status()
         
         data = response.json()
         
         return jsonify({
             'success': True,
-            'player1': player1,
-            'player2': player2,
+            'player1_id': player1_id,
+            'player2_id': player2_id,
             'h2h': data
         })
     
@@ -126,38 +162,102 @@ def get_h2h(player1, player2):
             'error': f'Erro ao buscar H2H: {str(e)}'
         }), 500
 
-@app.route('/api/match-stats/<match_id>')
-def get_match_stats(match_id):
-    """Buscar estatísticas ao vivo de uma partida"""
+@app.route('/api/match-details/<match_id>')
+def get_match_details(match_id):
+    """Buscar detalhes de uma partida específica"""
     try:
-        url = "https://tennis-api5.p.rapidapi.com/get-match-stats"
-        
-        headers = {
-            "x-rapidapi-key": RAPIDAPI_KEY,
-            "x-rapidapi-host": RAPIDAPI_HOST
-        }
+        # Endpoint para buscar detalhes da partida
+        url = f"{BASE_URL}/match_details"
         
         params = {
-            "id": match_id
+            'match_id': match_id
         }
         
-        response = requests.get(url, headers=headers, params=params, timeout=10)
+        response = requests.get(url, headers=HEADERS, params=params, timeout=10)
+        response.raise_for_status()
+        
+        match_data = response.json()
+        
+        return jsonify({
+            'success': True,
+            'match': match_data
+        })
+    
+    except requests.exceptions.RequestException as e:
+        print(f"Erro ao buscar detalhes da partida: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Erro ao buscar detalhes: {str(e)}'
+        }), 500
+
+@app.route('/api/player-news/<player_name>')
+def get_player_news(player_name):
+    """Buscar notícias sobre um jogador (lesões, etc)"""
+    try:
+        # Endpoint para buscar notícias/highlights
+        url = f"{BASE_URL}/player_news"
+        
+        params = {
+            'player_name': player_name
+        }
+        
+        response = requests.get(url, headers=HEADERS, params=params, timeout=10)
         response.raise_for_status()
         
         data = response.json()
         
+        # Processa as notícias
+        news = []
+        if isinstance(data, dict):
+            highlights = data.get('news', []) or data.get('data', [])
+        elif isinstance(data, list):
+            highlights = data
+        else:
+            highlights = []
+        
+        for item in highlights[:5]:  # Últimas 5 notícias
+            news.append({
+                'title': item.get('title'),
+                'description': item.get('description'),
+                'date': item.get('date'),
+                'type': item.get('type')
+            })
+        
         return jsonify({
             'success': True,
-            'match_id': match_id,
-            'stats': data
+            'player': player_name,
+            'news': news
         })
     
     except requests.exceptions.RequestException as e:
-        print(f"Erro ao buscar estatísticas: {str(e)}")
+        print(f"Erro ao buscar notícias: {str(e)}")
         return jsonify({
             'success': False,
-            'error': f'Erro ao buscar estatísticas: {str(e)}'
+            'error': f'Erro ao buscar notícias: {str(e)}'
         }), 500
+
+def process_match(match):
+    """Processa dados de uma partida"""
+    try:
+        return {
+            'id': match.get('id'),
+            'player1': match.get('player1', {}).get('name') if isinstance(match.get('player1'), dict) else match.get('player1'),
+            'player2': match.get('player2', {}).get('name') if isinstance(match.get('player2'), dict) else match.get('player2'),
+            'player1_id': match.get('player1', {}).get('id') if isinstance(match.get('player1'), dict) else None,
+            'player2_id': match.get('player2', {}).get('id') if isinstance(match.get('player2'), dict) else None,
+            'score': match.get('score'),
+            'status': match.get('status'),
+            'tournament': match.get('tournament', {}).get('name') if isinstance(match.get('tournament'), dict) else match.get('tournament'),
+            'tournament_type': match.get('tournament', {}).get('type') if isinstance(match.get('tournament'), dict) else None,
+            'surface': match.get('surface'),
+            'current_set': match.get('current_set'),
+            'player1_stats': match.get('player1_stats', {}),
+            'player2_stats': match.get('player2_stats', {}),
+            'updated_at': datetime.now().isoformat()
+        }
+    except Exception as e:
+        print(f"Erro ao processar partida: {str(e)}")
+        return None
 
 if __name__ == '__main__':
     # Executar em 0.0.0.0 para aceitar conexões externas

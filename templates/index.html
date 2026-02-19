@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel de Monitoramento de Tênis - Análise de Oportunidades</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎾 Painel de Monitoramento de Tênis</h1>
+            <p class="subtitle">Análise Inteligente para Apostas Esportivas</p>
+            <div class="status-indicator">
+                <span class="status-dot"></span>
+                <span id="status-text">Conectando...</span>
+            </div>
+        </header>
+
+        <main>
+            <div class="controls">
+                <button id="btn-refresh" class="btn-primary">🔄 Atualizar Agora</button>
+                <span class="last-update">Última atualização: <span id="last-update-time">--:--</span></span>
+            </div>
+
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p>Buscando partidas ao vivo...</p>
+            </div>
+
+            <div id="live-matches" class="matches-grid">
+                <!-- Os cartões das partidas serão inseridos aqui dinamicamente -->
+            </div>
+
+            <div id="no-matches" class="no-matches" style="display: none;">
+                <p>Nenhuma partida ao vivo no momento.</p>
+                <p>Tente novamente em alguns minutos.</p>
+            </div>
+        </main>
+
+        <footer>
+            <p>Sistema de Monitoramento de Tênis v1.0 | Atualizado a cada 60 segundos</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

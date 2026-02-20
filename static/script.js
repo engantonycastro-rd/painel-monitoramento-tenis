@@ -50,9 +50,6 @@ async function fetchLiveMatches() {
 
         allMatches = liveMatches;
         
-        // Enriquecer dados com notícias e histórico
-        await enrichMatchesData(liveMatches);
-        
         // Renderizar cartões
         renderMatches(liveMatches);
         
@@ -68,33 +65,44 @@ async function fetchLiveMatches() {
     }
 }
 
-// Enriquecer dados das partidas com notícias e histórico
-async function enrichMatchesData(matches) {
-    for (let match of matches) {
-        try {
-            // Buscar histórico para cada jogador
-            match.player1_history = await fetchPlayerHistory(match.player1);
-            match.player2_history = await fetchPlayerHistory(match.player2);
-            
-            // Buscar H2H
-            match.h2h = await fetchH2H(match.player1, match.player2);
-            
-            // Buscar estatísticas ao vivo
-            match.live_stats = await fetchLiveStats(match.id);
-            
-            // Simular alertas de lesão (em produção, seria baseado em notícias reais)
-            match.player1_injury_alert = false;
-            match.player2_injury_alert = false;
-        } catch (error) {
-            console.warn('Erro ao enriquecer dados da partida:', error);
+// Buscar estatísticas ao vivo de uma partida
+async function fetchMatchStats(matchId) {
+    try {
+        const response = await fetch(`/api/match-stats/${matchId}`);
+
+        if (!response.ok) {
+            return null;
         }
+
+        const data = await response.json();
+        return data.stats || null;
+    } catch (error) {
+        console.warn('Erro ao buscar estatísticas:', error);
+        return null;
     }
 }
 
-// Buscar histórico de partidas
-async function fetchPlayerHistory(playerName) {
+// Buscar H2H
+async function fetchMatchH2H(matchId) {
     try {
-        const response = await fetch(`/api/player-history/${encodeURIComponent(playerName)}`);
+        const response = await fetch(`/api/match-h2h/${matchId}`);
+
+        if (!response.ok) {
+            return [];
+        }
+
+        const data = await response.json();
+        return data.h2h || [];
+    } catch (error) {
+        console.warn('Erro ao buscar H2H:', error);
+        return [];
+    }
+}
+
+// Buscar histórico de partida
+async function fetchMatchHistory(matchId) {
+    try {
+        const response = await fetch(`/api/match-history/${matchId}`);
 
         if (!response.ok) {
             return [];
@@ -108,37 +116,20 @@ async function fetchPlayerHistory(playerName) {
     }
 }
 
-// Buscar H2H
-async function fetchH2H(player1, player2) {
+// Buscar detalhes da partida
+async function fetchMatchDetails(matchId) {
     try {
-        const response = await fetch(`/api/h2h/${encodeURIComponent(player1)}/${encodeURIComponent(player2)}`);
+        const response = await fetch(`/api/match-details/${matchId}`);
 
         if (!response.ok) {
-            return { player1_wins: 0, player2_wins: 0 };
+            return null;
         }
 
         const data = await response.json();
-        return data.h2h || { player1_wins: 0, player2_wins: 0 };
+        return data.match || null;
     } catch (error) {
-        console.warn('Erro ao buscar H2H:', error);
-        return { player1_wins: 0, player2_wins: 0 };
-    }
-}
-
-// Buscar estatísticas ao vivo
-async function fetchLiveStats(matchId) {
-    try {
-        const response = await fetch(`/api/match-stats/${matchId}`);
-
-        if (!response.ok) {
-            return {};
-        }
-
-        const data = await response.json();
-        return data.stats || {};
-    } catch (error) {
-        console.warn('Erro ao buscar estatísticas:', error);
-        return {};
+        console.warn('Erro ao buscar detalhes:', error);
+        return null;
     }
 }
 
@@ -157,14 +148,7 @@ function createMatchCard(match, index) {
     const card = document.createElement('div');
     card.className = 'match-card';
     
-    const player1InjuryClass = match.player1_injury_alert ? 'injury-alert' : '';
-    const player2InjuryClass = match.player2_injury_alert ? 'injury-alert' : '';
-    
-    const player1InjuryIcon = match.player1_injury_alert ? '❗ ' : '';
-    const player2InjuryIcon = match.player2_injury_alert ? '❗ ' : '';
-    
     const score = match.score || '0-0';
-    const sets = match.sets || [];
     
     card.innerHTML = `
         <div class="match-header">
@@ -176,138 +160,140 @@ function createMatchCard(match, index) {
             <div class="players">
                 <div class="player-row">
                     <div class="player-info">
-                        <div class="player-name ${player1InjuryClass}">
-                            ${player1InjuryIcon}${match.player1 || 'Jogador 1'}
+                        <div class="player-name">
+                            ${match.player1 || 'Jogador 1'}
                         </div>
                     </div>
-                    <div class="player-score">${sets[0] || 0}</div>
+                    <div class="player-score">${match.score_player1 || 0}</div>
                 </div>
                 
                 <div class="player-row">
                     <div class="player-info">
-                        <div class="player-name ${player2InjuryClass}">
-                            ${player2InjuryIcon}${match.player2 || 'Jogador 2'}
+                        <div class="player-name">
+                            ${match.player2 || 'Jogador 2'}
                         </div>
                     </div>
-                    <div class="player-score">${sets[1] || 0}</div>
+                    <div class="player-score">${match.score_player2 || 0}</div>
                 </div>
             </div>
             
             <div class="match-score">
-                Set ${match.current_set || 1} | Game ${match.current_game || 0}
+                ${match.status || 'Em progresso'}
             </div>
             
             <div class="insight-tags">
-                ${match.player1_injury_alert ? '<span class="insight-tag danger">⚠️ Possível Lesão</span>' : ''}
-                ${match.player2_injury_alert ? '<span class="insight-tag danger">⚠️ Possível Lesão</span>' : ''}
                 <span class="insight-tag">📊 Clique para detalhes</span>
             </div>
         </div>
         
         <div class="details" id="details-${index}">
-            <div class="details-section">
-                <h4>📈 Últimas 15 Partidas - ${match.player1}</h4>
-                <table class="stats-table">
-                    <thead>
-                        <tr>
-                            <th>Resultado</th>
-                            <th>Adversário</th>
-                            <th>Piso</th>
-                            <th>Torneio</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${match.player1_history && match.player1_history.length > 0 ? 
-                            match.player1_history.slice(0, 5).map(h => `
-                            <tr>
-                                <td class="${h.result === 'W' ? 'win' : 'loss'}">
-                                    ${h.result === 'W' ? '✓ Vitória' : '✗ Derrota'}
-                                </td>
-                                <td>${h.opponent || '-'}</td>
-                                <td>${h.surface || '-'}</td>
-                                <td>${h.tournament || '-'}</td>
-                            </tr>
-                        `).join('')
-                        : '<tr><td colspan="4">Sem dados disponíveis</td></tr>'
-                        }
-                    </tbody>
-                </table>
-            </div>
-            
-            <div class="details-section">
-                <h4>📈 Últimas 15 Partidas - ${match.player2}</h4>
-                <table class="stats-table">
-                    <thead>
-                        <tr>
-                            <th>Resultado</th>
-                            <th>Adversário</th>
-                            <th>Piso</th>
-                            <th>Torneio</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${match.player2_history && match.player2_history.length > 0 ? 
-                            match.player2_history.slice(0, 5).map(h => `
-                            <tr>
-                                <td class="${h.result === 'W' ? 'win' : 'loss'}">
-                                    ${h.result === 'W' ? '✓ Vitória' : '✗ Derrota'}
-                                </td>
-                                <td>${h.opponent || '-'}</td>
-                                <td>${h.surface || '-'}</td>
-                                <td>${h.tournament || '-'}</td>
-                            </tr>
-                        `).join('')
-                        : '<tr><td colspan="4">Sem dados disponíveis</td></tr>'
-                        }
-                    </tbody>
-                </table>
-            </div>
-            
-            <div class="details-section">
-                <h4>🤝 Confronto Direto (H2H)</h4>
-                <table class="stats-table">
-                    <tr>
-                        <td><strong>${match.player1}</strong></td>
-                        <td class="win">${match.h2h?.player1_wins || 0} vitórias</td>
-                    </tr>
-                    <tr>
-                        <td><strong>${match.player2}</strong></td>
-                        <td class="win">${match.h2h?.player2_wins || 0} vitórias</td>
-                    </tr>
-                </table>
-            </div>
-            
-            <div class="details-section">
-                <h4>⚡ Estatísticas Ao Vivo</h4>
-                <table class="stats-table">
-                    <tr>
-                        <td><strong>Aces</strong></td>
-                        <td>${match.live_stats?.aces || '-'}</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Duplas Faltas</strong></td>
-                        <td>${match.live_stats?.double_faults || '-'}</td>
-                    </tr>
-                    <tr>
-                        <td><strong>1º Serviço %</strong></td>
-                        <td>${match.live_stats?.first_serve_percentage || '-'}</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Break Points</strong></td>
-                        <td>${match.live_stats?.break_points || '-'}</td>
-                    </tr>
-                </table>
-            </div>
+            <div class="loading-details">Carregando detalhes...</div>
         </div>
     `;
     
     // Adicionar event listener para expandir detalhes
-    card.addEventListener('click', () => {
+    card.addEventListener('click', async () => {
         const details = card.querySelector(`#details-${index}`);
-        details.classList.toggle('active');
+        
+        if (details.classList.contains('active')) {
+            // Fechar
+            details.classList.remove('active');
+        } else {
+            // Abrir e carregar dados
+            details.classList.add('active');
+            
+            // Se já tem dados, não recarregar
+            if (details.querySelector('.details-content')) {
+                return;
+            }
+            
+            // Carregar dados
+            await loadMatchDetails(match.id, details);
+        }
     });
     
     return card;
+}
+
+// Carregar detalhes da partida
+async function loadMatchDetails(matchId, detailsElement) {
+    try {
+        // Buscar dados em paralelo
+        const [stats, h2h, history, details] = await Promise.all([
+            fetchMatchStats(matchId),
+            fetchMatchH2H(matchId),
+            fetchMatchHistory(matchId),
+            fetchMatchDetails(matchId)
+        ]);
+        
+        // Renderizar conteúdo
+        let html = '<div class="details-content">';
+        
+        // Seção de Estatísticas
+        if (stats && stats.match) {
+            html += '<div class="details-section">';
+            html += '<h4>⚡ Estatísticas Ao Vivo</h4>';
+            html += '<table class="stats-table">';
+            html += '<thead><tr><th>Estatística</th><th>Jogador 1</th><th>Jogador 2</th></tr></thead>';
+            html += '<tbody>';
+            
+            stats.match.forEach(stat => {
+                html += `<tr>
+                    <td><strong>${stat.name}</strong></td>
+                    <td>${stat.home_team || '-'}</td>
+                    <td>${stat.away_team || '-'}</td>
+                </tr>`;
+            });
+            
+            html += '</tbody></table></div>';
+        }
+        
+        // Seção de H2H
+        if (h2h && h2h.length > 0) {
+            html += '<div class="details-section">';
+            html += '<h4>🤝 Confronto Direto (H2H)</h4>';
+            html += '<table class="stats-table">';
+            html += '<thead><tr><th>Informação</th><th>Valor</th></tr></thead>';
+            html += '<tbody>';
+            
+            h2h.forEach(item => {
+                html += `<tr><td>${item.name || '-'}</td><td>${item.value || '-'}</td></tr>`;
+            });
+            
+            html += '</tbody></table></div>';
+        } else {
+            html += '<div class="details-section"><h4>🤝 Confronto Direto (H2H)</h4><p>Sem dados disponíveis</p></div>';
+        }
+        
+        // Seção de Histórico
+        if (history && history.length > 0) {
+            html += '<div class="details-section">';
+            html += '<h4>📋 Histórico da Partida (Ponto a Ponto)</h4>';
+            html += '<table class="stats-table">';
+            html += '<thead><tr><th>Set</th><th>Descrição</th><th>Pontos</th></tr></thead>';
+            html += '<tbody>';
+            
+            history.forEach((set, idx) => {
+                const pointsCount = set.points ? set.points.length : 0;
+                html += `<tr>
+                    <td>${set.name || `Set ${idx + 1}`}</td>
+                    <td>${set.description || '-'}</td>
+                    <td>${pointsCount} pontos</td>
+                </tr>`;
+            });
+            
+            html += '</tbody></table></div>';
+        }
+        
+        html += '</div>';
+        
+        // Limpar e inserir novo conteúdo
+        detailsElement.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Erro ao carregar detalhes:', error);
+        detailsElement.innerHTML = '<div class="error-message">Erro ao carregar detalhes</div>';
+    }
 }
 
 // Mostrar/ocultar loading

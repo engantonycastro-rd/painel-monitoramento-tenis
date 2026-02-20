@@ -1,46 +1,118 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel de Monitoramento de Tênis - Análise de Oportunidades</title>
+    <title>Tennis Monitor - Análise de Apostas</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>🎾 Painel de Monitoramento de Tênis</h1>
-            <p class="subtitle">Análise Inteligente para Apostas Esportivas</p>
-            <div class="status-indicator">
-                <span class="status-dot"></span>
-                <span id="status-text">Conectando...</span>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-container">
+            <div class="header-left">
+                <div class="logo">
+                    <span class="logo-icon">🎾</span>
+                    <div class="logo-text">
+                        <h1>Tennis Monitor</h1>
+                        <p class="tagline">Análise Inteligente para Apostas</p>
+                    </div>
+                </div>
             </div>
-        </header>
-
-        <main>
-            <div class="controls">
-                <button id="btn-refresh" class="btn-primary">🔄 Atualizar Agora</button>
-                <span class="last-update">Última atualização: <span id="last-update-time">--:--</span></span>
+            
+            <div class="header-right">
+                <div class="status-bar">
+                    <div class="status-item">
+                        <span class="status-dot"></span>
+                        <span id="status-text">Conectando...</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="clock-icon">🕐</span>
+                        <span id="last-update-time">--:--</span>
+                    </div>
+                </div>
+                <button id="btn-refresh" class="btn-refresh">
+                    <span>🔄</span> Atualizar
+                </button>
             </div>
+        </div>
+    </header>
 
-            <div id="loading" class="loading">
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Filtros -->
+        <section class="filters-section">
+            <div class="filters-container">
+                <div class="search-box">
+                    <input type="text" id="search-input" placeholder="🔍 Buscar jogador ou torneio..." class="search-input">
+                </div>
+                
+                <div class="filter-buttons">
+                    <button class="filter-btn active" data-filter="all">Todos</button>
+                    <button class="filter-btn" data-filter="atp">ATP</button>
+                    <button class="filter-btn" data-filter="challenger">Challenger</button>
+                    <button class="filter-btn" data-filter="grandslam">Grand Slam</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Loading -->
+        <div id="loading" class="loading-container">
+            <div class="loading-content">
                 <div class="spinner"></div>
                 <p>Buscando partidas ao vivo...</p>
             </div>
+        </div>
 
-            <div id="live-matches" class="matches-grid">
-                <!-- Os cartões das partidas serão inseridos aqui dinamicamente -->
+        <!-- No Matches -->
+        <div id="no-matches" class="no-matches-container" style="display: none;">
+            <div class="no-matches-content">
+                <span class="emoji">😴</span>
+                <h2>Nenhuma partida ao vivo</h2>
+                <p>Volte em alguns minutos para verificar novas partidas</p>
+            </div>
+        </div>
+
+        <!-- Matches Grid -->
+        <div id="live-matches" class="matches-grid">
+            <!-- Cartões inseridos dinamicamente -->
+        </div>
+    </main>
+
+    <!-- Modal -->
+    <div id="details-modal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-container">
+            <button class="modal-close">&times;</button>
+            
+            <div class="modal-header">
+                <h2 id="modal-title">Detalhes da Partida</h2>
+                <p id="modal-tournament"></p>
             </div>
 
-            <div id="no-matches" class="no-matches" style="display: none;">
-                <p>Nenhuma partida ao vivo no momento.</p>
-                <p>Tente novamente em alguns minutos.</p>
+            <div class="modal-tabs">
+                <button class="tab-btn active" data-tab="stats">⚡ Estatísticas</button>
+                <button class="tab-btn" data-tab="h2h">🤝 H2H</button>
+                <button class="tab-btn" data-tab="history">📋 Histórico</button>
             </div>
-        </main>
 
-        <footer>
-            <p>Sistema de Monitoramento de Tênis v1.0 | Atualizado a cada 60 segundos</p>
-        </footer>
+            <div class="modal-body">
+                <div id="stats-tab" class="tab-content active">
+                    <div id="stats-loading" class="loading-small"><div class="spinner-small"></div></div>
+                    <div id="stats-content"></div>
+                </div>
+
+                <div id="h2h-tab" class="tab-content">
+                    <div id="h2h-loading" class="loading-small"><div class="spinner-small"></div></div>
+                    <div id="h2h-content"></div>
+                </div>
+
+                <div id="history-tab" class="tab-content">
+                    <div id="history-loading" class="loading-small"><div class="spinner-small"></div></div>
+                    <div id="history-content"></div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>

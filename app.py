@@ -84,9 +84,11 @@ def get_match_details(match_id):
     """Buscar detalhes de uma partida específica"""
     try:
         # Endpoint para buscar detalhes da partida
-        url = f"{BASE_URL}/api/flashscore/v2/match/{match_id}"
+        url = f"{BASE_URL}/api/flashscore/v2/matches/details"
         
-        response = requests.get(url, headers=HEADERS, timeout=10)
+        params = {'match_id': match_id}
+        
+        response = requests.get(url, headers=HEADERS, params=params, timeout=10)
         response.raise_for_status()
         
         match_data = response.json()
@@ -108,9 +110,11 @@ def get_match_stats(match_id):
     """Buscar estatísticas ao vivo de uma partida"""
     try:
         # Endpoint para buscar estatísticas da partida
-        url = f"{BASE_URL}/api/flashscore/v2/match/{match_id}/stats"
+        url = f"{BASE_URL}/api/flashscore/v2/matches/match/stats"
         
-        response = requests.get(url, headers=HEADERS, timeout=10)
+        params = {'match_id': match_id}
+        
+        response = requests.get(url, headers=HEADERS, params=params, timeout=10)
         response.raise_for_status()
         
         stats_data = response.json()
@@ -127,17 +131,40 @@ def get_match_stats(match_id):
             'error': f'Erro ao buscar estatísticas: {str(e)}'
         }), 500
 
-@app.route('/api/h2h/<player1>/<player2>')
-def get_h2h(player1, player2):
+@app.route('/api/match-history/<match_id>')
+def get_match_history(match_id):
+    """Buscar histórico ponto a ponto de uma partida"""
+    try:
+        # Endpoint para buscar histórico da partida
+        url = f"{BASE_URL}/api/flashscore/v2/matches/match/match-history"
+        
+        params = {'match_id': match_id}
+        
+        response = requests.get(url, headers=HEADERS, params=params, timeout=10)
+        response.raise_for_status()
+        
+        history_data = response.json()
+        
+        return jsonify({
+            'success': True,
+            'history': history_data
+        })
+    
+    except requests.exceptions.RequestException as e:
+        print(f"Erro ao buscar histórico: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Erro ao buscar histórico: {str(e)}'
+        }), 500
+
+@app.route('/api/match-h2h/<match_id>')
+def get_match_h2h(match_id):
     """Buscar confronto direto entre dois jogadores"""
     try:
         # Endpoint para buscar H2H
-        url = f"{BASE_URL}/api/flashscore/v2/h2h"
+        url = f"{BASE_URL}/api/flashscore/v2/matches/h2h"
         
-        params = {
-            'player1': player1,
-            'player2': player2
-        }
+        params = {'match_id': match_id}
         
         response = requests.get(url, headers=HEADERS, params=params, timeout=10)
         response.raise_for_status()
@@ -154,35 +181,6 @@ def get_h2h(player1, player2):
         return jsonify({
             'success': False,
             'error': f'Erro ao buscar H2H: {str(e)}'
-        }), 500
-
-@app.route('/api/player-history/<player_name>')
-def get_player_history(player_name):
-    """Buscar histórico de partidas de um jogador"""
-    try:
-        # Endpoint para buscar histórico do jogador
-        url = f"{BASE_URL}/api/flashscore/v2/player/{player_name}/matches"
-        
-        params = {
-            'limit': 15
-        }
-        
-        response = requests.get(url, headers=HEADERS, params=params, timeout=10)
-        response.raise_for_status()
-        
-        history_data = response.json()
-        
-        return jsonify({
-            'success': True,
-            'player': player_name,
-            'history': history_data
-        })
-    
-    except requests.exceptions.RequestException as e:
-        print(f"Erro ao buscar histórico: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': f'Erro ao buscar histórico: {str(e)}'
         }), 500
 
 def process_match(match, tournament_name, tournament_id):

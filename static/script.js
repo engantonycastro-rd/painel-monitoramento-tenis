@@ -1,4 +1,5 @@
-// Estado da aplicação
+'use strict';
+
 let allMatches = [];
 let updateInterval = null;
 let currentModalMatch = null;
@@ -72,6 +73,12 @@ async function fetchLiveMatches() {
 
         allMatches = liveMatches;
         
+        // Buscar notícias para cada jogador
+        for (let match of liveMatches) {
+            await fetchPlayerNews(match.player1);
+            await fetchPlayerNews(match.player2);
+        }
+        
         renderMatches(liveMatches);
         
         statusText.textContent = 'Online';
@@ -82,6 +89,21 @@ async function fetchLiveMatches() {
         console.error('Erro ao buscar partidas:', error);
         statusText.textContent = 'Erro ao conectar';
         showNoMatches();
+    }
+}
+
+// Buscar notícias de um jogador
+async function fetchPlayerNews(playerName) {
+    try {
+        const response = await fetch(`/api/player-news/${encodeURIComponent(playerName)}`);
+        const data = await response.json();
+        
+        if (data.has_injury_alert) {
+            // Armazenar alerta para exibir no cartão
+            localStorage.setItem(`injury_${playerName}`, 'true');
+        }
+    } catch (error) {
+        console.error('Erro ao buscar notícias:', error);
     }
 }
 
@@ -100,6 +122,12 @@ function createMatchCard(match, index) {
     const card = document.createElement('div');
     card.className = 'match-card';
     
+    const hasInjury1 = localStorage.getItem(`injury_${match.player1}`) === 'true';
+    const hasInjury2 = localStorage.getItem(`injury_${match.player2}`) === 'true';
+    
+    const injuryAlert1 = hasInjury1 ? '<div class="injury-alert">⚠️ Alerta</div>' : '';
+    const injuryAlert2 = hasInjury2 ? '<div class="injury-alert">⚠️ Alerta</div>' : '';
+    
     card.innerHTML = `
         <div class="match-header">
             <div class="tournament-name">${match.tournament || 'Torneio'}</div>
@@ -113,6 +141,7 @@ function createMatchCard(match, index) {
                         <div class="player-name">
                             ${match.player1 || 'Jogador 1'}
                         </div>
+                        ${injuryAlert1}
                     </div>
                     <div class="player-score">${match.score_player1 || 0}</div>
                 </div>
@@ -122,13 +151,14 @@ function createMatchCard(match, index) {
                         <div class="player-name">
                             ${match.player2 || 'Jogador 2'}
                         </div>
+                        ${injuryAlert2}
                     </div>
                     <div class="player-score">${match.score_player2 || 0}</div>
                 </div>
             </div>
             
             <div class="match-score">
-                ${match.status || 'Em progresso'}
+                <div class="set-info">${match.status || 'Em progresso'}</div>
             </div>
             
             <div class="insight-tags">
@@ -157,6 +187,7 @@ async function openModal(match) {
     await loadTabStats(match.id);
     await loadTabH2H(match.id);
     await loadTabHistory(match.id);
+    await loadTabNews(match.player1, match.player2);
     
     // Ativar primeira aba
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -264,21 +295,19 @@ async function loadTabHistory(matchId) {
         historyLoading.style.display = 'none';
         
         if (data.history && data.history.length > 0) {
-            let html = '<table class="stats-table"><thead><tr><th>Set</th><th>Descrição</th><th>Pontos</th></tr></thead><tbody>';
+            let html = '<div class="history-list">';
             
-            data.history.forEach((set, idx) => {
-                const pointsCount = set.points ? set.points.length : 0;
-                html += `<tr>
-                    <td>${set.name || `Set ${idx + 1}`}</td>
-                    <td>${set.description || '-'}</td>
-                    <td>${pointsCount} pontos</td>
-                </tr>`;
+            data.history.forEach(item => {
+                html += `<div class="history-item">
+                    <span class="history-point">${item.point || '-'}</span>
+                    <span class="history-time">${item.time || '-'}</span>
+                </div>`;
             });
             
-            html += '</tbody></table>';
+            html += '</div>';
             historyContent.innerHTML = html;
         } else {
-            historyContent.innerHTML = '<p>Sem dados de histórico disponíveis</p>';
+            historyContent.innerHTML = '<p>Sem histórico disponível</p>';
         }
     } catch (error) {
         console.error('Erro ao carregar histórico:', error);
@@ -287,38 +316,98 @@ async function loadTabHistory(matchId) {
     }
 }
 
+// Carregar notícias
+async function loadTabNews(player1, player2) {
+    const newsContent = document.getElementById('news-content');
+    const newsLoading = document.getElementById('news-loading');
+    
+    try {
+        // Buscar notícias de ambos os jogadores
+        const news1 = await fetch(`/api/player-news/${encodeURIComponent(player1)}`).then(r => r.json());
+        const news2 = await fetch(`/api/player-news/${encodeURIComponent(player2)}`).then(r => r.json());
+        
+        newsLoading.style.display = 'none';
+        
+        let html = '<div class="news-container">';
+        
+        // Notícias do jogador 1
+        if (news1.news && news1.news.length > 0) {
+            html += `<div class="player-news">
+                <h3>${player1}</h3>
+                ${news1.has_injury_alert ? '<div class="injury-warning">⚠️ ALERTA DE LESÃO</div>' : ''}
+                <div class="news-list">`;
+            
+            news1.news.forEach(article => {
+                html += `<div class="news-item">
+                    <h4>${article.title}</h4>
+                    <p>${article.description || 'Sem descrição'}</p>
+                    <small>${article.source || 'Fonte desconhecida'}</small>
+                </div>`;
+            });
+            
+            html += '</div></div>';
+        }
+        
+        // Notícias do jogador 2
+        if (news2.news && news2.news.length > 0) {
+            html += `<div class="player-news">
+                <h3>${player2}</h3>
+                ${news2.has_injury_alert ? '<div class="injury-warning">⚠️ ALERTA DE LESÃO</div>' : ''}
+                <div class="news-list">`;
+            
+            news2.news.forEach(article => {
+                html += `<div class="news-item">
+                    <h4>${article.title}</h4>
+                    <p>${article.description || 'Sem descrição'}</p>
+                    <small>${article.source || 'Fonte desconhecida'}</small>
+                </div>`;
+            });
+            
+            html += '</div></div>';
+        }
+        
+        if ((news1.news && news1.news.length > 0) || (news2.news && news2.news.length > 0)) {
+            html += '</div>';
+            newsContent.innerHTML = html;
+        } else {
+            newsContent.innerHTML = '<p>Sem notícias recentes disponíveis</p>';
+        }
+    } catch (error) {
+        console.error('Erro ao carregar notícias:', error);
+        newsLoading.style.display = 'none';
+        newsContent.innerHTML = '<p>Erro ao carregar notícias</p>';
+    }
+}
+
 // Filtrar partidas
 function filterMatches() {
     const activeFilter = document.querySelector('.filter-btn.active').dataset.filter;
     const searchTerm = searchInput.value.toLowerCase();
     
-    let filtered = allMatches;
-    
-    if (activeFilter !== 'all') {
-        filtered = filtered.filter(match => {
-            const tournament = (match.tournament || '').toLowerCase();
-            return tournament.includes(activeFilter);
-        });
-    }
-    
-    if (searchTerm) {
-        filtered = filtered.filter(match => {
-            const player1 = (match.player1 || '').toLowerCase();
-            const player2 = (match.player2 || '').toLowerCase();
-            const tournament = (match.tournament || '').toLowerCase();
-            
-            return player1.includes(searchTerm) || player2.includes(searchTerm) || tournament.includes(searchTerm);
-        });
-    }
+    const filtered = allMatches.filter(match => {
+        const matchesFilter = activeFilter === 'all' || 
+                            (activeFilter === 'atp' && match.tournament.toLowerCase().includes('atp')) ||
+                            (activeFilter === 'challenger' && match.tournament.toLowerCase().includes('challenger')) ||
+                            (activeFilter === 'grandslam' && (match.tournament.toLowerCase().includes('australian') || 
+                                                             match.tournament.toLowerCase().includes('french') ||
+                                                             match.tournament.toLowerCase().includes('wimbledon') ||
+                                                             match.tournament.toLowerCase().includes('us open')));
+        
+        const matchesSearch = match.player1.toLowerCase().includes(searchTerm) ||
+                            match.player2.toLowerCase().includes(searchTerm) ||
+                            match.tournament.toLowerCase().includes(searchTerm);
+        
+        return matchesFilter && matchesSearch;
+    });
     
     renderMatches(filtered);
 }
 
-// Mostrar/ocultar estados
+// Mostrar/ocultar elementos
 function showMatches() {
     loadingContainer.style.display = 'none';
-    liveMatchesContainer.style.display = 'grid';
     noMatchesContainer.style.display = 'none';
+    liveMatchesContainer.style.display = 'grid';
 }
 
 function showNoMatches() {
@@ -330,14 +419,5 @@ function showNoMatches() {
 // Atualizar hora
 function updateLastUpdateTime() {
     const now = new Date();
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    lastUpdateTime.textContent = `${hours}:${minutes}`;
+    lastUpdateTime.textContent = now.toLocaleTimeString('pt-BR');
 }
-
-// Cleanup
-window.addEventListener('beforeunload', () => {
-    if (updateInterval) {
-        clearInterval(updateInterval);
-    }
-});

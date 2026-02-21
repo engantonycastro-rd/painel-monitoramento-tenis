@@ -2,6 +2,7 @@ from flask import Flask, render_template, jsonify
 import requests
 import os
 from datetime import datetime
+import json
 
 app = Flask(__name__)
 
@@ -182,6 +183,69 @@ def get_match_h2h(match_id):
             'success': False,
             'error': f'Erro ao buscar H2H: {str(e)}'
         }), 500
+
+@app.route('/api/player-news/<player_name>')
+def get_player_news(player_name):
+    """Buscar notícias sobre um jogador (lesões, problemas físicos)"""
+    try:
+        # Usar a API de notícias do Google News via RapidAPI
+        url = "https://google-news-api.p.rapidapi.com/v1/search"
+        
+        # Buscar notícias sobre lesões do jogador
+        query = f"{player_name} tennis injury lesão"
+        
+        headers = {
+            'x-rapidapi-key': RAPIDAPI_KEY,
+            'x-rapidapi-host': 'google-news-api.p.rapidapi.com'
+        }
+        
+        params = {
+            'q': query,
+            'lr': 'pt-BR'
+        }
+        
+        response = requests.get(url, headers=headers, params=params, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            articles = data.get('articles', [])
+            
+            # Filtrar apenas notícias relevantes (últimas 24 horas)
+            news_items = []
+            for article in articles[:5]:  # Pega os 5 primeiros
+                news_items.append({
+                    'title': article.get('title', ''),
+                    'description': article.get('description', ''),
+                    'url': article.get('url', ''),
+                    'source': article.get('source', ''),
+                    'published_at': article.get('published_at', '')
+                })
+            
+            # Verificar se há menção a lesão
+            has_injury_alert = any('injury' in str(item).lower() or 'lesão' in str(item).lower() or 'machucado' in str(item).lower() for item in news_items)
+            
+            return jsonify({
+                'success': True,
+                'player': player_name,
+                'news': news_items,
+                'has_injury_alert': has_injury_alert
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'player': player_name,
+                'news': [],
+                'has_injury_alert': False
+            })
+    
+    except Exception as e:
+        print(f"Erro ao buscar notícias: {str(e)}")
+        return jsonify({
+            'success': True,
+            'player': player_name,
+            'news': [],
+            'has_injury_alert': False
+        })
 
 def process_match(match, tournament_name, tournament_id):
     """Processa dados de uma partida"""

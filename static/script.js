@@ -264,14 +264,71 @@ async function loadTabH2H(matchId) {
         
         h2hLoading.style.display = 'none';
         
-        if (data.h2h && data.h2h.length > 0) {
-            let html = '<table class="stats-table"><thead><tr><th>Informação</th><th>Valor</th></tr></thead><tbody>';
+        if (data.h2h && Array.isArray(data.h2h) && data.h2h.length > 0) {
+            // Calcular estatísticas gerais
+            let player1Wins = 0;
+            let player2Wins = 0;
+            const currentMatch = currentModalMatch;
             
-            data.h2h.forEach(item => {
-                html += `<tr><td>${item.name || '-'}</td><td>${item.value || '-'}</td></tr>`;
+            data.h2h.forEach(match => {
+                if (match.home_team && match.away_team) {
+                    // Comparar com os jogadores da partida atual
+                    const isPlayer1Home = match.home_team.name.toLowerCase().includes(currentMatch.player1.toLowerCase().split(' ')[0]);
+                    const isPlayer1Away = match.away_team.name.toLowerCase().includes(currentMatch.player1.toLowerCase().split(' ')[0]);
+                    
+                    if (match.scores) {
+                        const homeScore = parseInt(match.scores.home) || 0;
+                        const awayScore = parseInt(match.scores.away) || 0;
+                        
+                        if (isPlayer1Home && homeScore > awayScore) player1Wins++;
+                        else if (isPlayer1Away && awayScore > homeScore) player1Wins++;
+                        else if (homeScore !== awayScore) player2Wins++;
+                    }
+                }
             });
             
-            html += '</tbody></table>';
+            let html = `
+                <div class="h2h-summary">
+                    <div class="h2h-stats">
+                        <div class="stat-box">
+                            <div class="stat-label">Confrontos</div>
+                            <div class="stat-value">${data.h2h.length}</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">${currentMatch.player1}</div>
+                            <div class="stat-value wins">${player1Wins}</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">${currentMatch.player2}</div>
+                            <div class="stat-value">${player2Wins}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="h2h-history">
+                    <h4>Histórico de Confrontos</h4>
+            `;
+            
+            // Mostrar últimos confrontos
+            data.h2h.slice(0, 10).forEach(match => {
+                const date = new Date(match.timestamp * 1000).toLocaleDateString('pt-BR');
+                const winner = parseInt(match.scores.home) > parseInt(match.scores.away) ? match.home_team.name : match.away_team.name;
+                const score = `${match.scores.home} - ${match.scores.away}`;
+                
+                html += `
+                    <div class="h2h-match">
+                        <div class="h2h-tournament">${match.tournament_name}</div>
+                        <div class="h2h-players">
+                            <span class="h2h-player">${match.home_team.name}</span>
+                            <span class="h2h-score">${score}</span>
+                            <span class="h2h-player">${match.away_team.name}</span>
+                        </div>
+                        <div class="h2h-date">${date}</div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
             h2hContent.innerHTML = html;
         } else {
             h2hContent.innerHTML = '<p>Sem dados de H2H disponíveis</p>';

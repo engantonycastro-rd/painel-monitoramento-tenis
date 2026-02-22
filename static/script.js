@@ -1,205 +1,106 @@
-'use strict';
-
-let allMatches = [];
-let updateInterval = null;
+// Variáveis globais
 let currentModalMatch = null;
 
 // Elementos do DOM
+const searchInput = document.getElementById('search-input');
+const filterButtons = document.querySelectorAll('.filter-btn');
 const liveMatchesContainer = document.getElementById('live-matches');
 const loadingContainer = document.getElementById('loading');
 const noMatchesContainer = document.getElementById('no-matches');
-const statusText = document.getElementById('status-text');
-const lastUpdateTime = document.getElementById('last-update-time');
-const btnRefresh = document.getElementById('btn-refresh');
 const detailsModal = document.getElementById('details-modal');
-const modalClose = document.querySelector('.modal-close');
 const modalOverlay = document.querySelector('.modal-overlay');
-const filterButtons = document.querySelectorAll('.filter-btn');
-const searchInput = document.getElementById('search-input');
+const modalClose = document.querySelector('.modal-close');
+const tabButtons = document.querySelectorAll('.tab-btn');
 
 // Event listeners
-btnRefresh.addEventListener('click', () => {
-    fetchLiveMatches();
-});
-
-modalClose.addEventListener('click', () => {
-    closeModal();
-});
-
-modalOverlay.addEventListener('click', () => {
-    closeModal();
-});
-
-filterButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-        filterButtons.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        filterMatches();
-    });
-});
-
 searchInput.addEventListener('input', filterMatches);
+filterButtons.forEach(btn => btn.addEventListener('click', handleFilterClick));
+modalClose.addEventListener('click', closeModal);
+modalOverlay.addEventListener('click', closeModal);
+tabButtons.forEach(btn => btn.addEventListener('click', handleTabClick));
 
-// Inicializar
-document.addEventListener('DOMContentLoaded', () => {
-    fetchLiveMatches();
-    updateInterval = setInterval(fetchLiveMatches, 60000);
-});
-
-// Buscar partidas ao vivo
-async function fetchLiveMatches() {
+// Carregar partidas ao vivo
+async function loadLiveMatches() {
     try {
-        statusText.textContent = 'Atualizando...';
-
+        loadingContainer.style.display = 'flex';
+        noMatchesContainer.style.display = 'none';
+        liveMatchesContainer.innerHTML = '';
+        
         const response = await fetch('/api/live-matches');
-
-        if (!response.ok) {
-            throw new Error(`Erro na API: ${response.status}`);
-        }
-
         const data = await response.json();
         
-        if (!data.success) {
-            throw new Error(data.error || 'Erro desconhecido');
+        loadingContainer.style.display = 'none';
+        
+        if (data.matches && data.matches.length > 0) {
+            data.matches.forEach(match => {
+                const card = createMatchCard(match);
+                liveMatchesContainer.appendChild(card);
+            });
+            
+            // Atualizar status
+            updateStatus('Online', true);
+        } else {
+            noMatchesContainer.style.display = 'flex';
+            updateStatus('Sem partidas ao vivo', false);
         }
         
-        const liveMatches = data.matches || [];
-        
-        if (liveMatches.length === 0) {
-            showNoMatches();
-            statusText.textContent = 'Nenhuma partida ao vivo';
-            return;
-        }
-
-        allMatches = liveMatches;
-        
-        // Buscar notícias para cada jogador
-        for (let match of liveMatches) {
-            await fetchPlayerNews(match.player1);
-            await fetchPlayerNews(match.player2);
-        }
-        
-        renderMatches(liveMatches);
-        
-        statusText.textContent = 'Online';
+        // Atualizar hora da última atualização
         updateLastUpdateTime();
-        showMatches();
-
     } catch (error) {
-        console.error('Erro ao buscar partidas:', error);
-        statusText.textContent = 'Erro ao conectar';
-        showNoMatches();
+        console.error('Erro ao carregar partidas:', error);
+        loadingContainer.style.display = 'none';
+        noMatchesContainer.style.display = 'flex';
+        updateStatus('Erro na conexão', false);
     }
 }
 
-// Buscar notícias de um jogador
-async function fetchPlayerNews(playerName) {
-    try {
-        const response = await fetch(`/api/player-news/${encodeURIComponent(playerName)}`);
-        const data = await response.json();
-        
-        if (data.has_injury_alert) {
-            // Armazenar alerta para exibir no cartão
-            localStorage.setItem(`injury_${playerName}`, 'true');
-        }
-    } catch (error) {
-        console.error('Erro ao buscar notícias:', error);
-    }
-}
-
-// Renderizar cartões das partidas
-function renderMatches(matches) {
-    liveMatchesContainer.innerHTML = '';
-    
-    matches.forEach((match, index) => {
-        const card = createMatchCard(match, index);
-        liveMatchesContainer.appendChild(card);
-    });
-}
-
-// Criar cartão de partida
-function createMatchCard(match, index) {
+// Criar card de partida
+function createMatchCard(match) {
     const card = document.createElement('div');
     card.className = 'match-card';
     
-    const hasInjury1 = localStorage.getItem(`injury_${match.player1}`) === 'true';
-    const hasInjury2 = localStorage.getItem(`injury_${match.player2}`) === 'true';
-    
-    const injuryAlert1 = hasInjury1 ? '<div class="injury-alert">⚠️ Alerta</div>' : '';
-    const injuryAlert2 = hasInjury2 ? '<div class="injury-alert">⚠️ Alerta</div>' : '';
+    const insightTags = match.insights ? match.insights.map(insight => 
+        `<span class="insight-tag ${insight.type === 'danger' ? 'danger' : ''}">${insight.text}</span>`
+    ).join('') : '';
     
     card.innerHTML = `
         <div class="match-header">
-            <div class="tournament-name">${match.tournament || 'Torneio'}</div>
-            <div class="live-badge">🔴 AO VIVO</div>
+            <span class="tournament-name">${match.tournament_name}</span>
+            <span class="live-badge">🔴 AO VIVO</span>
         </div>
-        
         <div class="match-body">
             <div class="players">
                 <div class="player-row">
-                    <div class="player-info">
-                        <div class="player-name">
-                            ${match.player1 || 'Jogador 1'}
-                        </div>
-                        ${injuryAlert1}
-                    </div>
-                    <div class="player-score">${match.score_player1 || 0}</div>
+                    <span class="player-name">${match.player1}</span>
+                    <span class="player-score">${match.score1}</span>
                 </div>
-                
                 <div class="player-row">
-                    <div class="player-info">
-                        <div class="player-name">
-                            ${match.player2 || 'Jogador 2'}
-                        </div>
-                        ${injuryAlert2}
-                    </div>
-                    <div class="player-score">${match.score_player2 || 0}</div>
+                    <span class="player-name">${match.player2}</span>
+                    <span class="player-score">${match.score2}</span>
                 </div>
             </div>
-            
-            <div class="match-score">
-                <div class="set-info">${match.status || 'Em progresso'}</div>
-            </div>
-            
-            <div class="insight-tags">
-                <span class="insight-tag">📊 Clique para detalhes</span>
-            </div>
+            <div class="match-score">${match.current_set}</div>
+            ${insightTags ? `<div class="insight-tags">${insightTags}</div>` : ''}
         </div>
     `;
     
-    card.addEventListener('click', () => {
-        openModal(match);
-    });
-    
+    card.addEventListener('click', () => openModal(match));
     return card;
 }
 
-// Abrir modal com detalhes
+// Abrir modal
 async function openModal(match) {
     currentModalMatch = match;
-    
-    document.getElementById('modal-title').textContent = `${match.player1} vs ${match.player2}`;
-    document.getElementById('modal-tournament').textContent = match.tournament || 'Torneio';
-    
     detailsModal.classList.add('active');
     
+    document.getElementById('modal-title').textContent = `${match.player1} vs ${match.player2}`;
+    document.getElementById('modal-tournament').textContent = match.tournament_name;
+    
     // Carregar dados das abas
-    await loadTabStats(match.id);
-    await loadTabH2H(match.id);
-    await loadTabHistory(match.id);
+    await loadTabStats(match.match_id);
+    await loadTabH2H(match.match_id);
+    await loadTabHistory(match.match_id);
     await loadTabNews(match.player1, match.player2);
-    
-    // Ativar primeira aba
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.remove('active');
-        btn.addEventListener('click', handleTabClick);
-    });
-    document.querySelector('.tab-btn').classList.add('active');
-    
-    document.querySelectorAll('.tab-content').forEach(content => {
-        content.classList.remove('active');
-    });
-    document.getElementById('stats-tab').classList.add('active');
 }
 
 // Fechar modal
@@ -208,18 +109,20 @@ function closeModal() {
     currentModalMatch = null;
 }
 
-// Handle tab click
+// Lidar com clique em abas
 function handleTabClick(e) {
     const tabName = e.target.dataset.tab;
     
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    // Remover ativa de todos os botões e conteúdos
+    tabButtons.forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
     
+    // Adicionar ativa ao botão e conteúdo clicado
     e.target.classList.add('active');
     document.getElementById(`${tabName}-tab`).classList.add('active');
 }
 
-// Carregar estatísticas
+// Carregar Estatísticas
 async function loadTabStats(matchId) {
     const statsContent = document.getElementById('stats-content');
     const statsLoading = document.getElementById('stats-loading');
@@ -230,15 +133,13 @@ async function loadTabStats(matchId) {
         
         statsLoading.style.display = 'none';
         
-        if (data.stats && data.stats.match) {
+        if (data.stats) {
             let html = '<table class="stats-table"><thead><tr><th>Estatística</th><th>Jogador 1</th><th>Jogador 2</th></tr></thead><tbody>';
             
-            data.stats.match.forEach(stat => {
-                html += `<tr>
-                    <td><strong>${stat.name || '-'}</strong></td>
-                    <td>${stat.home_team || '-'}</td>
-                    <td>${stat.away_team || '-'}</td>
-                </tr>`;
+            Object.entries(data.stats).forEach(([key, value]) => {
+                const player1Val = value.player1 || 0;
+                const player2Val = value.player2 || 0;
+                html += `<tr><td>${key}</td><td>${player1Val}</td><td>${player2Val}</td></tr>`;
             });
             
             html += '</tbody></table>';
@@ -250,6 +151,40 @@ async function loadTabStats(matchId) {
         console.error('Erro ao carregar estatísticas:', error);
         statsLoading.style.display = 'none';
         statsContent.innerHTML = '<p>Erro ao carregar estatísticas</p>';
+    }
+}
+
+// Carregar Histórico
+async function loadTabHistory(matchId) {
+    const historyContent = document.getElementById('history-content');
+    const historyLoading = document.getElementById('history-loading');
+    
+    try {
+        const response = await fetch(`/api/match-history/${matchId}`);
+        const data = await response.json();
+        
+        historyLoading.style.display = 'none';
+        
+        if (data.history && data.history.length > 0) {
+            let html = '<div class="history-list">';
+            
+            data.history.forEach(match => {
+                html += `<div class="history-item">
+                    <div class="history-tournament">${match.tournament}</div>
+                    <div class="history-result">${match.result}</div>
+                    <div class="history-date">${match.date}</div>
+                </div>`;
+            });
+            
+            html += '</div>';
+            historyContent.innerHTML = html;
+        } else {
+            historyContent.innerHTML = '<p>Sem histórico disponível</p>';
+        }
+    } catch (error) {
+        console.error('Erro ao carregar histórico:', error);
+        historyLoading.style.display = 'none';
+        historyContent.innerHTML = '<p>Erro ao carregar histórico</p>';
     }
 }
 
@@ -367,40 +302,7 @@ async function loadTabH2H(matchId) {
     }
 }
 
-// Carregar histórico
-async function loadTabHistory(matchId) {
-    const historyContent = document.getElementById('history-content');
-    const historyLoading = document.getElementById('history-loading');
-    
-    try {
-        const response = await fetch(`/api/match-history/${matchId}`);
-        const data = await response.json();
-        
-        historyLoading.style.display = 'none';
-        
-        if (data.history && data.history.length > 0) {
-            let html = '<div class="history-list">';
-            
-            data.history.forEach(item => {
-                html += `<div class="history-item">
-                    <span class="history-point">${item.point || '-'}</span>
-                    <span class="history-time">${item.time || '-'}</span>
-                </div>`;
-            });
-            
-            html += '</div>';
-            historyContent.innerHTML = html;
-        } else {
-            historyContent.innerHTML = '<p>Sem histórico disponível</p>';
-        }
-    } catch (error) {
-        console.error('Erro ao carregar histórico:', error);
-        historyLoading.style.display = 'none';
-        historyContent.innerHTML = '<p>Erro ao carregar histórico</p>';
-    }
-}
-
-// Carregar notícias
+// Carregar Notícias
 async function loadTabNews(player1, player2) {
     const newsContent = document.getElementById('news-content');
     const newsLoading = document.getElementById('news-loading');
@@ -417,15 +319,27 @@ async function loadTabNews(player1, player2) {
         // Notícias do jogador 1
         if (news1.news && news1.news.length > 0) {
             html += `<div class="player-news">
-                <h3>${player1}</h3>
-                ${news1.has_injury_alert ? '<div class="injury-warning">⚠️ ALERTA DE LESÃO</div>' : ''}
+                <div class="player-news-header">
+                    <h3>${player1}</h3>
+                    ${news1.has_injury_alert ? '<span class="injury-alert-badge">⚠️ ALERTA</span>' : ''}
+                </div>
+                ${news1.has_injury_alert ? '<div class="injury-warning">⚠️ ALERTA DE LESÃO - Fique atento a possíveis problemas físicos</div>' : ''}
                 <div class="news-list">`;
             
-            news1.news.forEach(article => {
-                html += `<div class="news-item">
-                    <h4>${article.title}</h4>
-                    <p>${article.description || 'Sem descrição'}</p>
-                    <small>${article.source || 'Fonte desconhecida'}</small>
+            news1.news.forEach((article, index) => {
+                const hasUrl = article.url && article.url.length > 0;
+                const publishedDate = article.published_at ? new Date(article.published_at).toLocaleDateString('pt-BR') : 'Data desconhecida';
+                
+                html += `<div class="news-item" ${index === 0 ? 'style="border-top: none;"' : ''}>
+                    <div class="news-header">
+                        <h4>${article.title}</h4>
+                        <span class="news-source">${article.source || 'Fonte'}</span>
+                    </div>
+                    <p class="news-description">${article.description || 'Sem descrição disponível'}</p>
+                    <div class="news-footer">
+                        <small class="news-date">📅 ${publishedDate}</small>
+                        ${hasUrl ? `<a href="${article.url}" target="_blank" class="news-link">Ler mais →</a>` : ''}
+                    </div>
                 </div>`;
             });
             
@@ -435,15 +349,27 @@ async function loadTabNews(player1, player2) {
         // Notícias do jogador 2
         if (news2.news && news2.news.length > 0) {
             html += `<div class="player-news">
-                <h3>${player2}</h3>
-                ${news2.has_injury_alert ? '<div class="injury-warning">⚠️ ALERTA DE LESÃO</div>' : ''}
+                <div class="player-news-header">
+                    <h3>${player2}</h3>
+                    ${news2.has_injury_alert ? '<span class="injury-alert-badge">⚠️ ALERTA</span>' : ''}
+                </div>
+                ${news2.has_injury_alert ? '<div class="injury-warning">⚠️ ALERTA DE LESÃO - Fique atento a possíveis problemas físicos</div>' : ''}
                 <div class="news-list">`;
             
-            news2.news.forEach(article => {
-                html += `<div class="news-item">
-                    <h4>${article.title}</h4>
-                    <p>${article.description || 'Sem descrição'}</p>
-                    <small>${article.source || 'Fonte desconhecida'}</small>
+            news2.news.forEach((article, index) => {
+                const hasUrl = article.url && article.url.length > 0;
+                const publishedDate = article.published_at ? new Date(article.published_at).toLocaleDateString('pt-BR') : 'Data desconhecida';
+                
+                html += `<div class="news-item" ${index === 0 ? 'style="border-top: none;"' : ''}>
+                    <div class="news-header">
+                        <h4>${article.title}</h4>
+                        <span class="news-source">${article.source || 'Fonte'}</span>
+                    </div>
+                    <p class="news-description">${article.description || 'Sem descrição disponível'}</p>
+                    <div class="news-footer">
+                        <small class="news-date">📅 ${publishedDate}</small>
+                        ${hasUrl ? `<a href="${article.url}" target="_blank" class="news-link">Ler mais →</a>` : ''}
+                    </div>
                 </div>`;
             });
             
@@ -454,12 +380,12 @@ async function loadTabNews(player1, player2) {
             html += '</div>';
             newsContent.innerHTML = html;
         } else {
-            newsContent.innerHTML = '<p>Sem notícias recentes disponíveis</p>';
+            newsContent.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-muted);"><p>📰 Sem notícias recentes disponíveis</p></div>';
         }
     } catch (error) {
         console.error('Erro ao carregar notícias:', error);
         newsLoading.style.display = 'none';
-        newsContent.innerHTML = '<p>Erro ao carregar notícias</p>';
+        newsContent.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-muted);"><p>❌ Erro ao carregar notícias</p></div>';
     }
 }
 
@@ -468,40 +394,51 @@ function filterMatches() {
     const activeFilter = document.querySelector('.filter-btn.active').dataset.filter;
     const searchTerm = searchInput.value.toLowerCase();
     
-    const filtered = allMatches.filter(match => {
-        const matchesFilter = activeFilter === 'all' || 
-                            (activeFilter === 'atp' && match.tournament.toLowerCase().includes('atp')) ||
-                            (activeFilter === 'challenger' && match.tournament.toLowerCase().includes('challenger')) ||
-                            (activeFilter === 'grandslam' && (match.tournament.toLowerCase().includes('australian') || 
-                                                             match.tournament.toLowerCase().includes('french') ||
-                                                             match.tournament.toLowerCase().includes('wimbledon') ||
-                                                             match.tournament.toLowerCase().includes('us open')));
+    const cards = document.querySelectorAll('.match-card');
+    cards.forEach(card => {
+        const tournament = card.querySelector('.tournament-name').textContent.toLowerCase();
+        const players = card.querySelector('.players').textContent.toLowerCase();
         
-        const matchesSearch = match.player1.toLowerCase().includes(searchTerm) ||
-                            match.player2.toLowerCase().includes(searchTerm) ||
-                            match.tournament.toLowerCase().includes(searchTerm);
+        let matchesFilter = true;
+        if (activeFilter !== 'all') {
+            matchesFilter = tournament.includes(activeFilter);
+        }
         
-        return matchesFilter && matchesSearch;
+        const matchesSearch = tournament.includes(searchTerm) || players.includes(searchTerm);
+        
+        card.style.display = (matchesFilter && matchesSearch) ? '' : 'none';
     });
+}
+
+// Lidar com clique em filtro
+function handleFilterClick(e) {
+    filterButtons.forEach(btn => btn.classList.remove('active'));
+    e.target.classList.add('active');
+    filterMatches();
+}
+
+// Atualizar status
+function updateStatus(text, isOnline) {
+    const statusText = document.getElementById('status-text');
+    const statusDot = document.querySelector('.status-dot');
     
-    renderMatches(filtered);
+    statusText.textContent = text;
+    statusDot.style.background = isOnline ? 'var(--success-color)' : 'var(--danger-color)';
 }
 
-// Mostrar/ocultar elementos
-function showMatches() {
-    loadingContainer.style.display = 'none';
-    noMatchesContainer.style.display = 'none';
-    liveMatchesContainer.style.display = 'grid';
-}
-
-function showNoMatches() {
-    loadingContainer.style.display = 'none';
-    liveMatchesContainer.style.display = 'none';
-    noMatchesContainer.style.display = 'flex';
-}
-
-// Atualizar hora
+// Atualizar hora da última atualização
 function updateLastUpdateTime() {
     const now = new Date();
-    lastUpdateTime.textContent = now.toLocaleTimeString('pt-BR');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    document.getElementById('last-update-time').textContent = `${hours}:${minutes}`;
 }
+
+// Botão de atualizar
+document.getElementById('btn-refresh').addEventListener('click', loadLiveMatches);
+
+// Carregar partidas ao iniciar
+loadLiveMatches();
+
+// Atualizar a cada 30 segundos
+setInterval(loadLiveMatches, 30000);

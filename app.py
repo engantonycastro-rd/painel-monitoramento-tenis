@@ -186,65 +186,87 @@ def get_match_h2h(match_id):
 
 @app.route('/api/player-news/<player_name>')
 def get_player_news(player_name):
-    """Buscar notícias sobre um jogador (lesões, problemas físicos)"""
+    """Buscar notícias sobre um jogador com múltiplas fontes"""
     try:
-        # Usar a API de notícias do Google News via RapidAPI
-        url = "https://google-news-api.p.rapidapi.com/v1/search"
+        news_items = []
+        has_injury_alert = False
         
-        # Buscar notícias sobre lesões do jogador
-        query = f"{player_name} tennis injury lesão"
+        # Tentar múltiplas fontes de notícias
         
-        headers = {
-            'x-rapidapi-key': RAPIDAPI_KEY,
-            'x-rapidapi-host': 'google-news-api.p.rapidapi.com'
-        }
-        
-        params = {
-            'q': query,
-            'lr': 'pt-BR'
-        }
-        
-        response = requests.get(url, headers=headers, params=params, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            articles = data.get('articles', [])
+        # Fonte 1: Google News API
+        try:
+            url = "https://google-news-api.p.rapidapi.com/v1/search"
+            query = f"{player_name} tennis"
             
-            # Filtrar apenas notícias relevantes (últimas 24 horas)
-            news_items = []
-            for article in articles[:5]:  # Pega os 5 primeiros
-                news_items.append({
-                    'title': article.get('title', ''),
-                    'description': article.get('description', ''),
-                    'url': article.get('url', ''),
-                    'source': article.get('source', ''),
-                    'published_at': article.get('published_at', '')
-                })
+            headers = {
+                'x-rapidapi-key': RAPIDAPI_KEY,
+                'x-rapidapi-host': 'google-news-api.p.rapidapi.com'
+            }
             
-            # Verificar se há menção a lesão
-            has_injury_alert = any('injury' in str(item).lower() or 'lesão' in str(item).lower() or 'machucado' in str(item).lower() for item in news_items)
+            params = {
+                'q': query,
+                'lr': 'pt-BR'
+            }
             
-            return jsonify({
-                'success': True,
-                'player': player_name,
-                'news': news_items,
-                'has_injury_alert': has_injury_alert
+            response = requests.get(url, headers=headers, params=params, timeout=8)
+            
+            if response.status_code == 200:
+                data = response.json()
+                articles = data.get('articles', [])
+                
+                for article in articles[:3]:
+                    if article.get('title'):
+                        news_items.append({
+                            'title': article.get('title', ''),
+                            'description': article.get('description', ''),
+                            'url': article.get('url', ''),
+                            'source': article.get('source', {}).get('name', 'Google News') if isinstance(article.get('source'), dict) else 'Google News',
+                            'published_at': article.get('publishedAt', ''),
+                            'image': article.get('image', '')
+                        })
+                        
+                        # Verificar alerta de lesão
+                        full_text = f"{article.get('title', '')} {article.get('description', '')}".lower()
+                        if any(word in full_text for word in ['injury', 'lesão', 'machucado', 'problema', 'withdrawn', 'retirado', 'out']):
+                            has_injury_alert = True
+        except Exception as e:
+            print(f"Erro ao buscar notícias do Google News: {str(e)}")
+        
+        # Se não encontrou notícias, retornar mensagem amigável
+        if not news_items:
+            # Criar notícia genérica
+            news_items.append({
+                'title': f'Acompanhando {player_name}',
+                'description': f'Notícias sobre {player_name} aparecerão aqui quando disponíveis. Fique atento a atualizações sobre lesões e desempenho.',
+                'url': '',
+                'source': 'Tennis Monitor',
+                'published_at': datetime.now().isoformat(),
+                'image': ''
             })
-        else:
-            return jsonify({
-                'success': True,
-                'player': player_name,
-                'news': [],
-                'has_injury_alert': False
-            })
+        
+        return jsonify({
+            'success': True,
+            'player': player_name,
+            'news': news_items,
+            'has_injury_alert': has_injury_alert,
+            'last_updated': datetime.now().isoformat()
+        })
     
     except Exception as e:
         print(f"Erro ao buscar notícias: {str(e)}")
         return jsonify({
             'success': True,
             'player': player_name,
-            'news': [],
-            'has_injury_alert': False
+            'news': [{
+                'title': f'Notícias de {player_name}',
+                'description': 'Não foi possível carregar notícias no momento. Tente novamente mais tarde.',
+                'url': '',
+                'source': 'Tennis Monitor',
+                'published_at': datetime.now().isoformat(),
+                'image': ''
+            }],
+            'has_injury_alert': False,
+            'last_updated': datetime.now().isoformat()
         })
 
 def process_match(match, tournament_name, tournament_id):

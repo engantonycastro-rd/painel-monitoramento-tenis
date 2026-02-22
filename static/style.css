@@ -948,3 +948,17 @@ body {
         flex: 0 1 calc(50% - 0.25rem);
     }
 }
+
+
+/* ==================== H2H RESULT CLASSES ==================== */
+.h2h-match.home-win {
+    border-left-color: var(--success-color);
+}
+
+.h2h-match.away-win {
+    border-left-color: var(--danger-color);
+}
+
+.h2h-match.draw {
+    border-left-color: var(--warning-color);
+}

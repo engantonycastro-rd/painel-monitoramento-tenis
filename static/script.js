@@ -63,23 +63,31 @@ function createMatchCard(match) {
         `<span class="insight-tag ${insight.type === 'danger' ? 'danger' : ''}">${insight.text}</span>`
     ).join('') : '';
     
+    // Mapear nomes de propriedades do backend
+    const tournament = match.tournament || 'Torneio';
+    const player1 = match.player1 || 'Jogador 1';
+    const player2 = match.player2 || 'Jogador 2';
+    const score1 = match.score_player1 !== undefined ? match.score_player1 : 0;
+    const score2 = match.score_player2 !== undefined ? match.score_player2 : 0;
+    const status = match.status || 'Em progresso';
+    
     card.innerHTML = `
         <div class="match-header">
-            <span class="tournament-name">${match.tournament_name}</span>
+            <span class="tournament-name">${tournament.substring(0, 40)}...</span>
             <span class="live-badge">🔴 AO VIVO</span>
         </div>
         <div class="match-body">
             <div class="players">
                 <div class="player-row">
-                    <span class="player-name">${match.player1}</span>
-                    <span class="player-score">${match.score1}</span>
+                    <span class="player-name">${player1}</span>
+                    <span class="player-score">${score1}</span>
                 </div>
                 <div class="player-row">
-                    <span class="player-name">${match.player2}</span>
-                    <span class="player-score">${match.score2}</span>
+                    <span class="player-name">${player2}</span>
+                    <span class="player-score">${score2}</span>
                 </div>
             </div>
-            <div class="match-score">${match.current_set}</div>
+            <div class="match-score">${status}</div>
             ${insightTags ? `<div class="insight-tags">${insightTags}</div>` : ''}
         </div>
     `;
@@ -94,12 +102,13 @@ async function openModal(match) {
     detailsModal.classList.add('active');
     
     document.getElementById('modal-title').textContent = `${match.player1} vs ${match.player2}`;
-    document.getElementById('modal-tournament').textContent = match.tournament_name;
+    document.getElementById('modal-tournament').textContent = match.tournament || 'Torneio';
     
     // Carregar dados das abas
-    await loadTabStats(match.match_id);
-    await loadTabH2H(match.match_id);
-    await loadTabHistory(match.match_id);
+    const matchId = match.id || match.match_id;
+    await loadTabStats(matchId);
+    await loadTabH2H(matchId);
+    await loadTabHistory(matchId);
     await loadTabNews(match.player1, match.player2);
 }
 
